@@ -1,5 +1,5 @@
 import {build} from 'esbuild';
-import {gzipSync} from 'node:zlib';
+import {gzipSync,strToU8} from 'fflate';
 import {readFile,readdir,writeFile,mkdir,copyFile} from 'node:fs/promises';
 import {join,relative} from 'node:path';
 const framework={};const libs={};
@@ -12,5 +12,5 @@ for(const file of (await readdir('node_modules/typescript/lib')).sort())if(/^lib
 await writeFile('src/framework-types.ts','export const frameworkTypes='+JSON.stringify(framework)+';\n');
 await writeFile('src/typescript-libs.ts','export const typescriptLibs='+JSON.stringify(libs)+';\n');
 const worker=await build({entryPoints:['src/vue.worker.ts'],write:false,bundle:true,format:'iife',mainFields:['browser','module','main'],platform:'browser',target:'es2022',minify:true,legalComments:'eof',define:{'process.env.NODE_ENV':'"production"'}});
-await writeFile('src/worker-source.ts','export const workerSource='+JSON.stringify(gzipSync(worker.outputFiles[0].text,{level:9}).toString('base64'))+';\n');
+await writeFile('src/worker-source.ts','export const workerSource='+JSON.stringify(Buffer.from(gzipSync(strToU8(worker.outputFiles[0].text),{level:9,mtime:0})).toString('base64'))+';\n');
 await build({entryPoints:['src/index.ts'],outfile:'workbench.js',bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,legalComments:'eof'});
