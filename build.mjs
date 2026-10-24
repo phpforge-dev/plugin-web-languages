@@ -12,5 +12,7 @@ for(const file of (await readdir('node_modules/typescript/lib')).sort())if(/^lib
 await writeFile('src/framework-types.ts','export const frameworkTypes='+JSON.stringify(framework)+';\n');
 await writeFile('src/typescript-libs.ts','export const typescriptLibs='+JSON.stringify(libs)+';\n');
 const worker=await build({entryPoints:['src/vue.worker.ts'],write:false,bundle:true,format:'iife',mainFields:['browser','module','main'],platform:'browser',target:'es2022',minify:true,legalComments:'eof',define:{'process.env.NODE_ENV':'"production"'}});
+const tsWorker=await build({entryPoints:['monaco-editor/language/typescript/ts.worker.js'],write:false,bundle:true,format:'iife',mainFields:['browser','module','main'],platform:'browser',target:'es2022',minify:true,legalComments:'eof'});
+await writeFile('src/typescript-worker-source.ts','export const typescriptWorkerSource='+JSON.stringify(Buffer.from(gzipSync(strToU8(tsWorker.outputFiles[0].text),{level:9,mtime:0})).toString('base64'))+';\n');
 await writeFile('src/worker-source.ts','export const workerSource='+JSON.stringify(Buffer.from(gzipSync(strToU8(worker.outputFiles[0].text),{level:9,mtime:0})).toString('base64'))+';\n');
 await build({entryPoints:['src/index.ts'],outfile:'workbench.js',bundle:true,format:'esm',platform:'browser',target:'es2022',minify:true,legalComments:'eof'});

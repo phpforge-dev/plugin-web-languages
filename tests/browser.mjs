@@ -10,7 +10,7 @@ try{
  await page.route('**/plugin-web.js',async route=>route.fulfill({contentType:'application/javascript',body:await readFile('workbench.js','utf8')}));
  await page.route('**/tests/bootstrap.ts',route=>route.fulfill({contentType:'application/javascript',body:`
  const monaco=await import('/node_modules/.vite/deps/monaco-editor.js');
- const {installEditorWorkers}=await import('/tests/editor-workers.ts');installEditorWorkers();
+ const {installEditorWorkers}=await import('/tests/editor-workers.ts');installEditorWorkers();window.originalEnvironment=globalThis.MonacoEnvironment;
  const {activate}=await import('/plugin-web.js');window.disposers=[];activate({monaco,msg:(s,...v)=>s.reduce((a,x,i)=>a+x+(v[i]??''),''),own:f=>window.disposers.push(f),provide:(_name,value)=>window.webContribution=value});window.webLanguages=window.webContribution.installWebLanguages();window.monaco=monaco;
  document.getElementById('startup-splash').remove();document.getElementById('app').innerHTML='<div id="editor" style="height:100vh"></div>';
  window.ed=monaco.editor.create(document.getElementById('editor'),{automaticLayout:true,theme:'vs-dark',minimap:{enabled:false}});
@@ -52,6 +52,7 @@ try{
   const result={preserved:first.getValue().includes('unsaved'),deleted:!m.editor.getModel(uri('closed.ts')),added:!!m.editor.getModel(uri('new.ts'))};index.reset();result.reset=!m.editor.getModel(uri('new.ts'))&&!first.isDisposed();first.dispose();return result;
  });if(Object.values(snapshots).some(value=>!value))throw Error('Project snapshot lifecycle failed: '+JSON.stringify(snapshots));console.log('Project snapshots passed');
  await page.evaluate(()=>window.disposers.forEach(f=>f()));
+ if(!await page.evaluate(()=>globalThis.MonacoEnvironment===window.originalEnvironment))throw Error('Host worker router was not restored');
  if(await page.evaluate(()=>window.monaco.editor.getModelMarkers({owner:'vue'}).length))throw Error('Vue markers survived disposal');
  await mkdir('.artifacts',{recursive:true});await page.screenshot({path:'.artifacts/vue-language-service.png'});
  const report={ok:errors.length===0,workerBuild:'self-contained compressed production worker',checks:['JavaScript JSDoc completion','TypeScript completion, cross-file definition, references and diagnostics','React JSX props and useState type inference','Vue template completion, script definition and diagnostics','Vue imported component props','Project snapshots preserve open buffers, remove deleted files and reset'],errors};await writeFile('.artifacts/web-languages.json',JSON.stringify(report,null,2));console.log(report);if(errors.length)throw Error('Browser errors: '+errors.join('; '));

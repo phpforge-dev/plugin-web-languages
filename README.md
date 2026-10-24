@@ -2,11 +2,11 @@
 
 Independent JavaScript, TypeScript, React and Vue language integration for PHPForge IDE 0.2.13. Install from the plugin catalog and explicitly grant project.read and workbench. Language UI code runs as a trusted workbench contribution. It does not receive Node APIs.
 
-The package contributes TypeScript compiler configuration, actual framework declarations, a self-contained Vue/Volar worker, language providers and project snapshots. Monaco and its generic TypeScript worker are supplied by the IDE. Vue supports HTML single-file-component templates; Pug/Jade requires Node and is excluded. Bundled framework declarations permit offline use; local project declarations take priority.
+The package contributes TypeScript compiler configuration, actual framework declarations, a self-contained Vue/Volar worker, language providers and project snapshots. The existing Monaco instance is supplied by the IDE. This package owns the JavaScript/TypeScript worker as well as the Vue worker; it temporarily routes Monaco TypeScript worker requests and restores the generic host handler on disposal. Vue supports HTML single-file-component templates; Pug/Jade requires Node and is excluded. Bundled framework declarations permit offline use; local project declarations take priority.
 
 Project snapshots preserve unsaved editor buffers, cap indexing at 750 source files/500 declarations/8 MiB and show partial-index feedback. Project reset cancels stale reads and releases owned models. Disabling unregisters Vue providers, markers, listeners, framework extra libraries and worker resources.
 
-The Vue worker is gzip-compressed inside workbench.js and decompressed locally using browser DecompressionStream before creating a Blob worker. No CDN, remote imports or sibling repository is used. The package owns its worker runtime and framework types.
+The JavaScript/TypeScript and Vue workers are gzip-compressed inside workbench.js and decompressed locally using browser DecompressionStream before creating a Blob worker. No CDN, remote imports or sibling repository is used. The package owns its worker runtime and framework types.
 
 ## Development
 

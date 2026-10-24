@@ -4,3 +4,4 @@ src/framework-types.ts
 src/typescript-libs.ts
 src/worker-source.ts
 .artifacts/
+src/typescript-worker-source.ts

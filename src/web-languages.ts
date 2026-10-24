@@ -3,12 +3,28 @@ import {activateMarkers,activateAutoInsertion,registerProviders} from '@volar/mo
 import type {WorkerLanguageService} from '@volar/monaco/worker';
 import {frameworkTypes} from './framework-types';
 import {workerSource} from './worker-source';
+import {typescriptWorkerSource} from './typescript-worker-source';
 
 export const webLanguage=(language:string)=>['javascript','typescript','vue'].includes(language);
 export function createWebLanguages(monaco:any,own:(dispose:()=>void)=>void){
  return function installWebLanguages(){
  let disposed=false;const disposables:any[]=[];const compilerSnapshots:any[]=[];
  const ts=monaco.typescript;
+ const previousEnvironment=(globalThis as any).MonacoEnvironment;
+ const ownedWorkers=new Set<Worker>();
+ const createTypeScriptWorker=async()=>{
+  const compressed=Uint8Array.from(atob(typescriptWorkerSource),c=>c.charCodeAt(0));
+  const code=await new Response(new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  if(disposed)throw Error('Web language plugin is disabled');
+  const url=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));
+  const worker=new Worker(url);const terminate=worker.terminate.bind(worker);
+  worker.terminate=()=>{terminate();ownedWorkers.delete(worker);URL.revokeObjectURL(url);};ownedWorkers.add(worker);return worker;
+ };
+ const environment={...previousEnvironment,getWorker(module:string,label:string){
+  if(label==='typescript'||label==='javascript')return createTypeScriptWorker();
+  return previousEnvironment?.getWorker?.(module,label);
+ }};(globalThis as any).MonacoEnvironment=environment;
+ own(()=>{if((globalThis as any).MonacoEnvironment===environment)(globalThis as any).MonacoEnvironment=previousEnvironment;for(const worker of ownedWorkers)worker.terminate();});
  for(const defaults of [ts.javascriptDefaults,ts.typescriptDefaults]){
   compilerSnapshots.push([defaults,defaults.getCompilerOptions()]);
   defaults.setCompilerOptions({allowJs:true,checkJs:false,allowNonTsExtensions:true,noEmit:true,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ESNext,module:ts.ModuleKind.ESNext,moduleResolution:ts.ModuleResolutionKind.NodeJs,esModuleInterop:true,skipLibCheck:true});
