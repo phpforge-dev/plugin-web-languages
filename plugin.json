@@ -1,0 +1,30 @@
+{
+  "id": "phpforge.web-languages",
+  "name": "Web Languages",
+  "version": "1.0.0",
+  "minIdeVersion": "0.2.13",
+  "main": "main.js",
+  "description": "JavaScript, TypeScript, React and Vue language intelligence with offline framework types.",
+  "activation": {
+    "languages": [
+      "javascript",
+      "typescript",
+      "vue"
+    ]
+  },
+  "permissions": [
+    "project.read",
+    "workbench"
+  ],
+  "workbench": {
+    "apiVersion": 1,
+    "main": "workbench.js",
+    "style": "workbench.css",
+    "services": [
+      "read",
+      "tree",
+      "listFiles",
+      "workspace"
+    ]
+  }
+}

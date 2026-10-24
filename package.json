@@ -1,0 +1,25 @@
+{
+  "name": "@phpforge/plugin-web-languages",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:browser": "node tests/browser.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/react": "19.2.2",
+    "@volar/monaco": "2.4.28",
+    "@vue/language-service": "3.3.13",
+    "@vue/typescript-plugin": "3.3.13",
+    "esbuild": "0.28.2",
+    "monaco-editor": "^0.57.0",
+    "tsx": "^4.23.15",
+    "typescript": "5.9.3",
+    "vite": "^8.3.5",
+    "vue": "3.5.44"
+  }
+}

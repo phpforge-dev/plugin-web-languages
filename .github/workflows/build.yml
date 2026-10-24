@@ -1,0 +1,19 @@
+name: Build Web Languages plugin
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm test
+      - run: git diff --exit-code -- main.js workbench.js
+      - run: npx playwright install --with-deps webkit
+      - run: npm run test:browser

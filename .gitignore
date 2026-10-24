@@ -1,0 +1,6 @@
+node_modules/
+.DS_Store
+src/framework-types.ts
+src/typescript-libs.ts
+src/worker-source.ts
+.artifacts/
