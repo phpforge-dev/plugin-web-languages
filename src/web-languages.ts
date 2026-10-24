@@ -13,16 +13,16 @@ export function createWebLanguages(monaco:any,own:(dispose:()=>void)=>void){
  const ts=monaco.typescript;
  const previousEnvironment=(globalThis as any).MonacoEnvironment;
  const ownedWorkers=new Set<Worker>();
- const createTypeScriptWorker=async()=>{
+ const createTypeScriptWorker=async(options:any)=>{
   const compressed=Uint8Array.from(atob(typescriptWorkerSource),c=>c.charCodeAt(0));
   const code=await new Response(new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
   if(disposed)throw Error('Web language plugin is disabled');
   const url=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));
-  const worker=new Worker(url);const terminate=worker.terminate.bind(worker);
+  const worker=new Worker(url);worker.postMessage(options);const terminate=worker.terminate.bind(worker);
   worker.terminate=()=>{terminate();ownedWorkers.delete(worker);URL.revokeObjectURL(url);};ownedWorkers.add(worker);return worker;
  };
  const environment={...previousEnvironment,getWorker(module:string,label:string){
-  if(label==='typescript'||label==='javascript')return createTypeScriptWorker();
+  if(label==='typescript'||label==='javascript'){const defaults=label==='javascript'?ts.javascriptDefaults:ts.typescriptDefaults;return createTypeScriptWorker({compilerOptions:defaults.getCompilerOptions(),extraLibs:defaults.getExtraLibs(),inlayHintsOptions:defaults.inlayHintsOptions});}
   return previousEnvironment?.getWorker?.(module,label);
  }};(globalThis as any).MonacoEnvironment=environment;
 
@@ -40,7 +40,7 @@ export function createWebLanguages(monaco:any,own:(dispose:()=>void)=>void){
   const stop=()=>{managed?.dispose();managed=undefined;client=undefined;};
   const getWorker=async(...uris:any[])=>{
    if(disposed)throw Error('Web language plugin is disabled');
-   client??=(async()=>{const worker=await createTypeScriptWorker();worker.postMessage({compilerOptions:defaults.getCompilerOptions(),extraLibs:defaults.getExtraLibs(),inlayHintsOptions:defaults.inlayHintsOptions});worker.postMessage('ignore');worker.postMessage({});
+   client??=(async()=>{const worker=await createTypeScriptWorker({compilerOptions:defaults.getCompilerOptions(),extraLibs:defaults.getExtraLibs(),inlayHintsOptions:defaults.inlayHintsOptions});worker.postMessage('ignore');worker.postMessage({});
     managed=monaco.editor.createWebWorker({worker,keepIdleModels:true,createData:{compilerOptions:defaults.getCompilerOptions(),extraLibs:defaults.getExtraLibs(),inlayHintsOptions:defaults.inlayHintsOptions}});
     return await managed.getProxy();})();const proxy=await client;if(disposed)throw Error('Web language plugin is disabled');await managed.withSyncedResources([...monaco.editor.getModels().filter((m:any)=>webLanguage(m.getLanguageId())).map((m:any)=>m.uri),...uris]);return proxy;
   };tsWorkers.set(language,getWorker);
