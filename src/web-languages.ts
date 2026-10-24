@@ -4,6 +4,7 @@ import type {WorkerLanguageService} from '@volar/monaco/worker';
 import {frameworkTypes} from './framework-types';
 import {workerSource} from './worker-source';
 import {typescriptWorkerSource} from './typescript-worker-source';
+import {createTypeScriptAdapters} from './typescript-adapters';
 
 export const webLanguage=(language:string)=>['javascript','typescript','vue'].includes(language);
 export function createWebLanguages(monaco:any,own:(dispose:()=>void)=>void){
@@ -24,12 +25,41 @@ export function createWebLanguages(monaco:any,own:(dispose:()=>void)=>void){
   if(label==='typescript'||label==='javascript')return createTypeScriptWorker();
   return previousEnvironment?.getWorker?.(module,label);
  }};(globalThis as any).MonacoEnvironment=environment;
- own(()=>{if((globalThis as any).MonacoEnvironment===environment)(globalThis as any).MonacoEnvironment=previousEnvironment;for(const worker of ownedWorkers)worker.terminate();});
+
  for(const defaults of [ts.javascriptDefaults,ts.typescriptDefaults]){
-  compilerSnapshots.push([defaults,defaults.getCompilerOptions()]);
+  const modeKey=Symbol.for('phpforge.webLanguages.modeConfiguration');const modeSnapshot=defaults[modeKey]??{...defaults.modeConfiguration};defaults[modeKey]=modeSnapshot;defaults.setModeConfiguration(Object.fromEntries(Object.keys(modeSnapshot).map(key=>[key,false])));
+  compilerSnapshots.push([defaults,defaults.getCompilerOptions(),modeSnapshot]);
   defaults.setCompilerOptions({allowJs:true,checkJs:false,allowNonTsExtensions:true,noEmit:true,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ESNext,module:ts.ModuleKind.ESNext,moduleResolution:ts.ModuleResolutionKind.NodeJs,esModuleInterop:true,skipLibCheck:true});
   defaults.setEagerModelSync(true);
   for(const [path,text]of Object.entries(frameworkTypes))if(!path.startsWith('/node_modules/@vue/language-core/'))disposables.push(defaults.addExtraLib(text,'file://'+path));
+ }
+ const tsWorkers=new Map<string,(...uris:any[])=>Promise<any>>();
+ const adapters=createTypeScriptAdapters(monaco,ts.typescriptDefaults);
+ for(const [language,defaults]of [['javascript',ts.javascriptDefaults],['typescript',ts.typescriptDefaults]] as const){
+  let managed:any,client:Promise<any>|undefined;
+  const stop=()=>{managed?.dispose();managed=undefined;client=undefined;};
+  const getWorker=async(...uris:any[])=>{
+   if(disposed)throw Error('Web language plugin is disabled');
+   client??=(async()=>{const worker=await createTypeScriptWorker();worker.postMessage({compilerOptions:defaults.getCompilerOptions(),extraLibs:defaults.getExtraLibs(),inlayHintsOptions:defaults.inlayHintsOptions});worker.postMessage('ignore');worker.postMessage({});
+    managed=monaco.editor.createWebWorker({worker,keepIdleModels:true,createData:{compilerOptions:defaults.getCompilerOptions(),extraLibs:defaults.getExtraLibs(),inlayHintsOptions:defaults.inlayHintsOptions}});
+    return await managed.getProxy();})();const proxy=await client;if(disposed)throw Error('Web language plugin is disabled');await managed.withSyncedResources([...monaco.editor.getModels().filter((m:any)=>webLanguage(m.getLanguageId())).map((m:any)=>m.uri),...uris]);return proxy;
+  };tsWorkers.set(language,getWorker);
+  disposables.push(defaults.onDidChange(stop),defaults.onDidExtraLibsChange(()=>{if(client)void client.then(proxy=>{if(!disposed)return proxy.updateExtraLibs(defaults.getExtraLibs());}).catch(()=>{});}),{dispose:stop});
+  const libs=new adapters.LibFiles(getWorker);const mode=defaults[Symbol.for('phpforge.webLanguages.modeConfiguration')];
+  const register=(flag:string,method:string,adapter:any,args:any[]=[])=>{if(mode[flag]){const instance=new adapter(...args,getWorker);const provider=new Proxy(instance,{get(target,key){const value=Reflect.get(target,key);if(typeof value!=='function'||!String(key).match(/^(provide|resolve)/))return value;return(...values:any[])=>{if(disposed)return undefined;try{const result=value.apply(target,values);return result?.then?result.catch((error:any)=>{if(!disposed)throw error;}):result;}catch(error){if(!disposed)throw error;}};}});disposables.push(monaco.languages[method](language,provider));}};
+  register('completionItems','registerCompletionItemProvider',adapters.SuggestAdapter);
+  register('signatureHelp','registerSignatureHelpProvider',adapters.SignatureHelpAdapter);
+  register('hovers','registerHoverProvider',adapters.QuickInfoAdapter);
+  register('documentHighlights','registerDocumentHighlightProvider',adapters.DocumentHighlightAdapter);
+  register('definitions','registerDefinitionProvider',adapters.DefinitionAdapter,[libs]);
+  register('references','registerReferenceProvider',adapters.ReferenceAdapter,[libs]);
+  register('documentSymbols','registerDocumentSymbolProvider',adapters.OutlineAdapter);
+  register('rename','registerRenameProvider',adapters.RenameAdapter,[libs]);
+  register('documentRangeFormattingEdits','registerDocumentRangeFormattingEditProvider',adapters.FormatAdapter);
+  register('onTypeFormattingEdits','registerOnTypeFormattingEditProvider',adapters.FormatOnTypeAdapter);
+  register('codeActions','registerCodeActionProvider',adapters.CodeActionAdaptor);
+  register('inlayHints','registerInlayHintsProvider',adapters.InlayHintsAdapter);
+  if(mode.diagnostics)disposables.push(new adapters.DiagnosticsAdapter(libs,defaults,language,getWorker));
  }
  disposables.push(monaco.languages.register({id:'vue',extensions:['.vue'],aliases:['Vue']}));
  disposables.push(monaco.languages.setLanguageConfiguration('vue',{comments:{blockComment:['<!--','-->']},brackets:[['{','}'],['[',']'],['(',')']],autoClosingPairs:[{open:'{',close:'}'},{open:'(',close:')'},{open:'[',close:']'},{open:'"',close:'"'},{open:"'",close:"'"}]}));
@@ -57,10 +87,9 @@ export function createWebLanguages(monaco:any,own:(dispose:()=>void)=>void){
   disposables.push(activateAutoInsertion(vueWorker,['vue'],sync,monaco.editor as any));
  return await providers;})();}return ready;};
  disposables.push(monaco.languages.onLanguage('vue',()=>{void ensureVue().catch(error=>console.error('Vue language service',error));}));
- own(()=>{disposed=true;for(const d of disposables)d?.dispose?.();vueWorker?.dispose();for(const [defaults,options]of compilerSnapshots)defaults.setCompilerOptions(options);for(const model of monaco.editor.getModels())monaco.editor.setModelMarkers(model,'vue',[]);});
- async function typeScriptWorker(model:monaco.editor.ITextModel){
-  for(let attempt=0;;attempt++){try{const factory=await(model.getLanguageId()==='javascript'?ts.getJavaScriptWorker():ts.getTypeScriptWorker());return await factory(model.uri);}catch(error){if(attempt>=100||!String(error).includes('not registered'))throw error;await new Promise(resolve=>setTimeout(resolve,20));}}
- }
+ own(()=>{disposed=true;for(const d of disposables)d?.dispose?.();vueWorker?.dispose();for(const [defaults,options,mode]of compilerSnapshots){defaults.setModeConfiguration(Object.fromEntries(Object.keys(mode).map(key=>[key,false])));defaults.setCompilerOptions(options);}for(const model of monaco.editor.getModels()){monaco.editor.setModelMarkers(model,'vue',[]);monaco.editor.setModelMarkers(model,'typescript',[]);monaco.editor.setModelMarkers(model,'javascript',[]);}if((globalThis as any).MonacoEnvironment===environment)(globalThis as any).MonacoEnvironment=previousEnvironment;for(const worker of ownedWorkers)worker.terminate();});
+ async function typeScriptWorker(model:any){return tsWorkers.get(model.getLanguageId()==='javascript'?'javascript':'typescript')!(model.uri);}
+
  return {ensureVue,typeScriptWorker,async locations(model:monaco.editor.ITextModel,position:monaco.Position,method:string){
   if(model.getLanguageId()==='vue'){
    await ensureVue();const service=await vueWorker.withSyncedResources(sync());
